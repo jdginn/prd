@@ -283,15 +283,6 @@ fn find_combined_solutions(valid_solutions: &[Solution]) -> Vec<CombinedSolution
         .filter(|s| s.w >= 6.0)
         .collect();
     
-    println!("DEBUG: Found {} solutions with w >= 6", combinable_solutions.len());
-    if !combinable_solutions.is_empty() {
-        // Show some example w values
-        let mut w_values: Vec<f64> = combinable_solutions.iter().map(|s| s.w).collect();
-        w_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        w_values.dedup();
-        println!("DEBUG: Unique w values: {:?}", w_values);
-    }
-    
     if combinable_solutions.is_empty() {
         return combined_solutions;
     }
@@ -336,13 +327,18 @@ fn find_combined_solutions(valid_solutions: &[Solution]) -> Vec<CombinedSolution
                     
                     let total_width = sol1.w * count1 as f64 + sol2.w * count2 as f64;
                     
+                    // Early termination if we're already over the limit
+                    if total_width > 140.0 {
+                        break;
+                    }
+                    
                     if total_width >= 120.0 && total_width <= 140.0 {
                         let combined_max_height = sol1.max_build_height.max(sol2.max_build_height);
                         
                         let total_wells = (sol1.n - 1) * count1 + (sol2.n - 1) * count2;
                         let total_zero_wells = 
-                            ((sol1.zero_percentage / 100.0) * (sol1.n - 1) as f64 * count1 as f64) as usize
-                            + ((sol2.zero_percentage / 100.0) * (sol2.n - 1) as f64 * count2 as f64) as usize;
+                            ((sol1.zero_percentage / 100.0) * (sol1.n - 1) as f64 * count1 as f64).round() as usize
+                            + ((sol2.zero_percentage / 100.0) * (sol2.n - 1) as f64 * count2 as f64).round() as usize;
                         let combined_zero_percentage = (total_zero_wells as f64 / total_wells as f64) * 100.0;
                         
                         let mut solutions = vec![sol1.clone(); count1];
@@ -363,7 +359,7 @@ fn find_combined_solutions(valid_solutions: &[Solution]) -> Vec<CombinedSolution
     // Sort by combined_max_height (lower is better), then by how close to 130 the width is
     combined_solutions.sort_by(|a, b| {
         a.combined_max_height.cmp(&b.combined_max_height)
-            .then((a.total_width - 130.0).abs().partial_cmp(&(b.total_width - 130.0).abs()).unwrap())
+            .then((a.total_width - 130.0).abs().partial_cmp(&(b.total_width - 130.0).abs()).unwrap_or(std::cmp::Ordering::Equal))
     });
     
     combined_solutions
@@ -436,7 +432,7 @@ fn main() {
     // Sort by max_build_height (lower is better), then by zero_percentage
     valid_solutions.sort_by(|a, b| {
         a.max_build_height.cmp(&b.max_build_height)
-            .then(a.zero_percentage.partial_cmp(&b.zero_percentage).unwrap())
+            .then(a.zero_percentage.partial_cmp(&b.zero_percentage).unwrap_or(std::cmp::Ordering::Equal))
     });
     
     println!("Valid Solutions (25-50% wells with build_height = 0):");
