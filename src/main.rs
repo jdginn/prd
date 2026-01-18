@@ -134,8 +134,8 @@ fn main() {
                     Some(FoldDirection::Left) => true,
                     _ => false,
                 };
-                let left_neighbor_has_space = wells[i - 1].raw_height >= w;
-                let right_neighbor_has_space = wells[i + 1].raw_height >= w;
+                let left_neighbor_has_space = wells[i - 1].raw_height - wells[i].build_height > w;
+                let right_neighbor_has_space = wells[i + 1].raw_height - wells[i].build_height > w;
 
                 let can_fold_behind_left = !left_neighbor_folded && left_neighbor_has_space;
                 let can_fold_behind_right = !right_neighbor_folded && right_neighbor_has_space;
@@ -185,42 +185,90 @@ fn main() {
             }
         }
     }
+    // Prepare headers and rows for the table
+    let headers = vec![
+        "Well",
+        "Depth",
+        "Height",
+        "Build Height",
+        "Fold Dir",
+        "Fold Depth",
+    ];
+    let mut rows = Vec::new();
 
+    for (i, well) in wells.iter().enumerate() {
+        // Convert each row as string entries
+        rows.push(vec![
+            i.to_string(),
+            well.depth.to_string(),
+            well.raw_height.to_string(),
+            well.build_height.to_string(),
+            match &well.fold_direction {
+                Some(FoldDirection::Left) => "L".to_string(),
+                Some(FoldDirection::Right) => "R".to_string(),
+                None => "-".to_string(),
+            },
+            well.fold_depth.to_string(),
+        ]);
+    }
+
+    // Find column widths by taking the maximum length of all elements (headers + rows)
+    let mut col_widths = vec![0; headers.len()];
+    for (i, header) in headers.iter().enumerate() {
+        col_widths[i] = header.len(); // Start with the header length
+    }
+    for row in &rows {
+        for (i, value) in row.iter().enumerate() {
+            col_widths[i] = col_widths[i].max(value.len());
+        }
+    }
+
+    // Function to right-align and pad a string
+    let format_cell =
+        |value: &str, width: usize| -> String { format!("{:>width$}", value, width = width) };
+
+    // Print header
     println!(
-        "depths:           {:?}",
-        wells.iter().map(|w| w.depth).collect::<Vec<i32>>()
-    );
-    println!(
-        "heights:          {:?}",
-        wells.iter().map(|w| w.raw_height).collect::<Vec<i32>>()
-    );
-    println!(
-        "build heights:    {:?}",
-        wells.iter().map(|w| w.build_height).collect::<Vec<i32>>()
-    );
-    println!(
-        "fold directions:  {:?}",
-        wells
+        "{}",
+        headers
             .iter()
-            .map(|w| {
-                match &w.fold_direction {
-                    Some(FoldDirection::Left) => "L",
-                    Some(FoldDirection::Right) => "R",
-                    None => "-",
-                }
-            })
-            .collect::<Vec<&str>>()
+            .enumerate()
+            .map(|(i, header)| format_cell(header, col_widths[i]))
+            .collect::<Vec<_>>()
+            .join(" | ")
+    );
+
+    // Print a line separator
+    println!(
+        "{}",
+        col_widths
+            .iter()
+            .map(|&w| "-".repeat(w))
+            .collect::<Vec<_>>()
+            .join("-|-")
+    );
+
+    // Print rows
+    for row in rows {
+        println!(
+            "{}",
+            row.iter()
+                .enumerate()
+                .map(|(i, value)| format_cell(value, col_widths[i]))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        );
+    }
+
+    // Additional final statistics
+    let zero_build_height_count = wells.iter().filter(|w| w.build_height == 0).count();
+    println!();
+    println!(
+        "Number of wells with build_height = 0: {}",
+        zero_build_height_count
     );
     println!(
-        "fold depths:      {:?}",
-        wells.iter().map(|w| w.fold_depth).collect::<Vec<i32>>()
-    );
-    println!(
-        "number of wells with build_height 0: {}",
-        wells.iter().filter(|w| w.build_height == 0).count()
-    );
-    println!(
-        "percentage of wells with build_height0: {:.2}%",
-        (wells.iter().filter(|w| w.build_height == 0).count() as f64 / num_wells as f64) * 100.0
+        "Percentage of wells with build_height = 0: {:.2}%",
+        (zero_build_height_count as f64 / num_wells as f64) * 100.0
     );
 }
