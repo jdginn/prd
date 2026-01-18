@@ -13,6 +13,16 @@ pub struct Well {
     pub build_height: i32,
 }
 
+#[derive(Debug)]
+struct Solution {
+    n: usize,
+    r: i32,
+    f: i32,
+    w: f64,
+    max_build_height: i32,
+    zero_percentage: f64,
+}
+
 fn calculate(n: usize, r: i32, f: i32, w: f64) -> Result<Vec<Well>, String> {
     let num_wells = n - 1;
 
@@ -270,19 +280,9 @@ fn main() {
     primitive_roots.insert(19, vec![2, 3, 10, 13, 14, 15]);
     primitive_roots.insert(23, vec![5, 7, 10, 11, 14, 15, 17, 19, 20, 21]);
     primitive_roots.insert(29, vec![2, 3, 8, 10, 11, 14, 15, 18, 19, 21, 26, 27]);
-    primitive_roots.insert(31, vec![3]); // Placeholder, at least one primitive root
+    primitive_roots.insert(31, vec![3, 11, 12, 13, 17, 21, 22, 24]);
     
     let f_values = vec![0, 1, 2, 3, 4, 5, 6, 7];
-    
-    #[derive(Debug)]
-    struct Solution {
-        n: usize,
-        r: i32,
-        f: i32,
-        w: f64,
-        max_build_height: i32,
-        zero_percentage: f64,
-    }
     
     let mut valid_solutions = Vec::new();
     let mut error_count = 0;
