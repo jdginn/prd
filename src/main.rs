@@ -13,7 +13,7 @@ pub struct Well {
     pub build_height: i32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Solution {
     n: usize,
     r: i32,
@@ -21,6 +21,14 @@ struct Solution {
     w: f64,
     max_build_height: i32,
     zero_percentage: f64,
+}
+
+#[derive(Debug)]
+struct CombinedSolution {
+    solutions: Vec<Solution>,
+    combined_max_height: i32,
+    total_width: f64,
+    combined_zero_percentage: f64,
 }
 
 fn calculate(n: usize, r: i32, f: i32, w: f64) -> Result<Vec<Well>, String> {
@@ -266,6 +274,101 @@ fn print_wells_table(wells: &[Well]) {
     );
 }
 
+fn find_combined_solutions(valid_solutions: &[Solution]) -> Vec<CombinedSolution> {
+    let mut combined_solutions = Vec::new();
+    
+    // Filter solutions with w >= 6
+    let combinable_solutions: Vec<&Solution> = valid_solutions
+        .iter()
+        .filter(|s| s.w >= 6.0)
+        .collect();
+    
+    println!("DEBUG: Found {} solutions with w >= 6", combinable_solutions.len());
+    if !combinable_solutions.is_empty() {
+        // Show some example w values
+        let mut w_values: Vec<f64> = combinable_solutions.iter().map(|s| s.w).collect();
+        w_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        w_values.dedup();
+        println!("DEBUG: Unique w values: {:?}", w_values);
+    }
+    
+    if combinable_solutions.is_empty() {
+        return combined_solutions;
+    }
+    
+    // Try combinations of 2-20 solutions (to reach width of 120+)
+    // We'll use a greedy approach: pick the best solutions and keep adding until we reach 120-140
+    
+    // For efficiency, we'll try combinations of the same solution repeated
+    for sol in &combinable_solutions {
+        // Calculate how many copies we need
+        let min_copies = (120.0 / sol.w).ceil() as usize;
+        let max_copies = (140.0 / sol.w).floor() as usize;
+        
+        for count in min_copies..=max_copies {
+            let total_width = sol.w * count as f64;
+            if total_width >= 120.0 && total_width <= 140.0 {
+                let combined_max_height = sol.max_build_height;
+                let combined_zero_percentage = sol.zero_percentage;
+                
+                combined_solutions.push(CombinedSolution {
+                    solutions: vec![(*sol).clone(); count],
+                    combined_max_height,
+                    total_width,
+                    combined_zero_percentage,
+                });
+            }
+        }
+    }
+    
+    // Also try combinations of 2 different solutions repeated
+    for i in 0..combinable_solutions.len() {
+        for j in i+1..combinable_solutions.len() {
+            let sol1 = combinable_solutions[i];
+            let sol2 = combinable_solutions[j];
+            
+            // Try different counts of each
+            for count1 in 0..=20 {
+                for count2 in 0..=20 {
+                    if count1 + count2 < 2 {
+                        continue; // Need at least 2 total
+                    }
+                    
+                    let total_width = sol1.w * count1 as f64 + sol2.w * count2 as f64;
+                    
+                    if total_width >= 120.0 && total_width <= 140.0 {
+                        let combined_max_height = sol1.max_build_height.max(sol2.max_build_height);
+                        
+                        let total_wells = (sol1.n - 1) * count1 + (sol2.n - 1) * count2;
+                        let total_zero_wells = 
+                            ((sol1.zero_percentage / 100.0) * (sol1.n - 1) as f64 * count1 as f64) as usize
+                            + ((sol2.zero_percentage / 100.0) * (sol2.n - 1) as f64 * count2 as f64) as usize;
+                        let combined_zero_percentage = (total_zero_wells as f64 / total_wells as f64) * 100.0;
+                        
+                        let mut solutions = vec![sol1.clone(); count1];
+                        solutions.extend(vec![sol2.clone(); count2]);
+                        
+                        combined_solutions.push(CombinedSolution {
+                            solutions,
+                            combined_max_height,
+                            total_width,
+                            combined_zero_percentage,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort by combined_max_height (lower is better), then by how close to 130 the width is
+    combined_solutions.sort_by(|a, b| {
+        a.combined_max_height.cmp(&b.combined_max_height)
+            .then((a.total_width - 130.0).abs().partial_cmp(&(b.total_width - 130.0).abs()).unwrap())
+    });
+    
+    combined_solutions
+}
+
 fn main() {
     use std::collections::HashMap;
     
@@ -285,6 +388,7 @@ fn main() {
     let f_values = vec![0, 1, 2, 3, 4, 5, 6, 7];
     
     let mut valid_solutions = Vec::new();
+    let mut all_successful_solutions = Vec::new();  // Track ALL successful solutions
     let mut error_count = 0;
     
     println!("Testing all combinations...\n");
@@ -301,16 +405,21 @@ fn main() {
                             let zero_count = wells.iter().filter(|w| w.build_height == 0).count();
                             let zero_percentage = (zero_count as f64 / wells.len() as f64) * 100.0;
                             
+                            let solution = Solution {
+                                n,
+                                r,
+                                f,
+                                w,
+                                max_build_height,
+                                zero_percentage,
+                            };
+                            
+                            // Store ALL successful solutions for combination purposes
+                            all_successful_solutions.push(solution.clone());
+                            
                             // Filter: percentage of wells with build_height = 0 must be within 25-50%
                             if zero_percentage >= 25.0 && zero_percentage <= 50.0 {
-                                valid_solutions.push(Solution {
-                                    n,
-                                    r,
-                                    f,
-                                    w,
-                                    max_build_height,
-                                    zero_percentage,
-                                });
+                                valid_solutions.push(solution);
                             }
                         }
                         Err(_e) => {
@@ -332,7 +441,12 @@ fn main() {
     
     println!("Valid Solutions (25-50% wells with build_height = 0):");
     println!("Total valid solutions: {}", valid_solutions.len());
+    println!("Total successful solutions (all): {}", all_successful_solutions.len());
     println!("Total errors encountered: {}", error_count);
+    
+    // Debug: Show w values in all successful solutions with w >= 6
+    let combinable_count = all_successful_solutions.iter().filter(|s| s.w >= 6.0).count();
+    println!("Solutions with w >= 6: {}", combinable_count);
     println!();
     
     // Print table header
@@ -362,6 +476,119 @@ fn main() {
         println!("Detailed output for best solution:");
         if let Ok(wells) = calculate(best.n, best.r, best.f, best.w) {
             print_wells_table(&wells);
+        }
+    }
+    
+    // Find and display combined solutions
+    println!("\n{}", "=".repeat(80));
+    println!("COMBINED SOLUTIONS (w >= 6, total_width >= 120)");
+    println!("{}", "=".repeat(80));
+    
+    let combined_solutions = find_combined_solutions(&all_successful_solutions);
+    
+    if combined_solutions.is_empty() {
+        println!("No valid combined solutions found.");
+    } else {
+        println!("Total combined solutions: {}\n", combined_solutions.len());
+        
+        // Print table header for combined solutions
+        println!("{:>30} | {:>11} | {:>16} | {:>14}", 
+                 "Solution Combination", "Total Width", "Max Build Height", "Zero % (0 bh)");
+        println!("{}", "-".repeat(80));
+        
+        // Print top 20 combined solutions
+        for (idx, combo) in combined_solutions.iter().take(20).enumerate() {
+            // Count occurrences of each unique solution
+            let mut solution_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+            for sol in &combo.solutions {
+                let key = format!("N{}(r={},f={})", sol.n, sol.r, sol.f);
+                *solution_counts.entry(key).or_insert(0) += 1;
+            }
+            
+            // Format as "3×N7(r=3,f=1) + 2×N11(r=2,f=0)"
+            let combo_str: Vec<String> = solution_counts.iter()
+                .map(|(key, count)| {
+                    if *count > 1 {
+                        format!("{}×{}", count, key)
+                    } else {
+                        key.clone()
+                    }
+                })
+                .collect();
+            let combo_str = combo_str.join(" + ");
+            
+            println!("{:>30} | {:>11.2} | {:>16} | {:>13.2}%",
+                     combo_str, combo.total_width, combo.combined_max_height, combo.combined_zero_percentage);
+            
+            // Show more details for the top 3
+            if idx < 3 {
+                println!("   Details:");
+                let mut counted_solutions: std::collections::HashMap<String, (usize, &Solution)> = std::collections::HashMap::new();
+                for sol in &combo.solutions {
+                    let key = format!("N{}(r={},f={})", sol.n, sol.r, sol.f);
+                    counted_solutions.entry(key.clone())
+                        .and_modify(|(count, _)| *count += 1)
+                        .or_insert((1, sol));
+                }
+                
+                for (_key, (count, sol)) in counted_solutions.iter() {
+                    if *count > 1 {
+                        println!("     - {}× N={}, r={}, f={}, w={:.2}, max_height={}, zero%={:.2}%",
+                                 count, sol.n, sol.r, sol.f, sol.w, sol.max_build_height, sol.zero_percentage);
+                    } else {
+                        println!("     - N={}, r={}, f={}, w={:.2}, max_height={}, zero%={:.2}%",
+                                 sol.n, sol.r, sol.f, sol.w, sol.max_build_height, sol.zero_percentage);
+                    }
+                }
+            }
+        }
+        
+        // Show the best combined solution
+        if !combined_solutions.is_empty() {
+            println!();
+            println!("Best combined solution:");
+            let best_combo = &combined_solutions[0];
+            
+            // Count occurrences
+            let mut solution_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+            for sol in &best_combo.solutions {
+                let key = format!("N{}(r={},f={})", sol.n, sol.r, sol.f);
+                *solution_counts.entry(key).or_insert(0) += 1;
+            }
+            
+            let combo_str: Vec<String> = solution_counts.iter()
+                .map(|(key, count)| {
+                    if *count > 1 {
+                        format!("{}×{}", count, key)
+                    } else {
+                        key.clone()
+                    }
+                })
+                .collect();
+            
+            println!("  Combination: {}", combo_str.join(" + "));
+            println!("  Total Width: {:.2}", best_combo.total_width);
+            println!("  Combined Max Build Height: {}", best_combo.combined_max_height);
+            println!("  Combined Zero Percentage: {:.2}%", best_combo.combined_zero_percentage);
+            println!("  Individual solutions:");
+            
+            let mut counted_solutions: std::collections::HashMap<String, (usize, &Solution)> = std::collections::HashMap::new();
+            for sol in &best_combo.solutions {
+                let key = format!("N{}(r={},f={})", sol.n, sol.r, sol.f);
+                counted_solutions.entry(key.clone())
+                    .and_modify(|(count, _)| *count += 1)
+                    .or_insert((1, sol));
+            }
+            
+            for (_key, (count, sol)) in counted_solutions.iter() {
+                if *count > 1 {
+                    println!("    - {}× N={}, r={}, f={}, w={:.2}, max_height={}, zero%={:.2}%",
+                             count, sol.n, sol.r, sol.f, sol.w, sol.max_build_height, sol.zero_percentage);
+                } else {
+                    println!("    - N={}, r={}, f={}, w={:.2}, max_height={}, zero%={:.2}%",
+                             sol.n, sol.r, sol.f, sol.w, sol.max_build_height, sol.zero_percentage);
+                }
+            }
         }
     }
 }
